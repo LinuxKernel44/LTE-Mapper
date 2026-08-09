@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="signal_excellent">#2E7D32</color>
+    <color name="signal_good">#8BC34A</color>
+    <color name="signal_fair">#FFEB3B</color>
+    <color name="signal_weak">#FF9800</color>
+    <color name="signal_very_weak">#F44336</color>
+    <color name="signal_none">#616161</color>
+</resources>

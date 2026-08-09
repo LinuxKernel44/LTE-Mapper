@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Signal measurement data contains location history. It is excluded from
+   auto-backup so it never leaves the device via cloud backup either.
+-->
+<full-backup-content>
+    <exclude domain="database" path="lte_mapper.db" />
+    <exclude domain="database" path="lte_mapper.db-wal" />
+    <exclude domain="database" path="lte_mapper.db-shm" />
+    <exclude domain="sharedpref" path="mapping_settings.preferences_pb" />
+</full-backup-content>

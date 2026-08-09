@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LTE Mapper</string>
+
+    <string name="notification_channel_mapping_name">Signal mapping</string>
+    <string name="notification_channel_mapping_desc">Shows ongoing 4G/5G signal mapping progress</string>
+    <string name="notification_title">LTE Mapper</string>
+    <string name="notification_text_format">Mapping signal strength… %1$d measurements · %2$s</string>
+    <string name="notification_action_stop">Stop mapping</string>
+    <string name="notification_action_open">Open app</string>
+
+    <string name="permission_rationale_title">Permissions needed</string>
+    <string name="permission_location_title">Location access</string>
+    <string name="permission_location_rationale">LTE Mapper needs your location to tag every signal measurement with GPS coordinates so it can draw the coverage map. Location is never uploaded anywhere.</string>
+    <string name="permission_phone_state_title">Phone state access</string>
+    <string name="permission_phone_state_rationale">LTE Mapper needs phone-state access to read cell signal information (RSRP, RSRQ, cell ID, operator) from the modem. No calls, contacts, or personal data are ever read.</string>
+    <string name="permission_background_location_title">Background location (optional)</string>
+    <string name="permission_background_location_rationale">Allow \"all the time\" location access if you want mapping to continue while the screen is off or the app is in the background.</string>
+    <string name="permission_notifications_title">Notifications</string>
+    <string name="permission_notifications_rationale">Android requires a visible notification while LTE Mapper collects measurements in the background, so you always know mapping is active.</string>
+    <string name="permission_denied_message">Permission denied. You can grant it later from system Settings.</string>
+    <string name="permission_grant">Grant permission</string>
+    <string name="permission_open_settings">Open system settings</string>
+
+    <string name="privacy_title">Privacy</string>
+    <string name="privacy_body">
+        LTE Mapper only stores data locally on this device.\n\n
+        What is collected: GPS coordinates, GPS accuracy, and cellular signal parameters (RSRP, RSRQ, SNR, cell ID, PCI, EARFCN, operator, network type) while a mapping session is running.\n\n
+        Why it is collected: to build a signal-strength map of the areas you visit and let you review coverage history and statistics.\n\n
+        Where it is stored: in a local Room/SQLite database inside this app\'s private storage. Nothing is uploaded to any server, and there is no analytics or tracking of any kind.\n\n
+        How to export it: use Settings → Export to save your measurements as CSV, GeoJSON, or KML files you control.\n\n
+        How to delete it: use the button below to permanently erase all recorded sessions and measurements from this device.
+    </string>
+    <string name="privacy_delete_all">Delete all mapping data</string>
+    <string name="privacy_delete_confirm_title">Delete all data?</string>
+    <string name="privacy_delete_confirm_body">This permanently deletes every mapping session and measurement stored on this device. This cannot be undone.</string>
+
+    <string name="na">N/A</string>
+
+    <string name="battery_optimization_title">Battery optimization</string>
+    <string name="battery_optimization_rationale">Android can pause location and background mapping to save battery. Exempting LTE Mapper keeps long or screen-off sessions running reliably.</string>
+    <string name="battery_optimization_status_exempt">Exempted — background mapping runs unrestricted</string>
+    <string name="battery_optimization_status_not_exempt">Not exempted — the OS may pause background mapping</string>
+    <string name="battery_optimization_button">Exempt LTE Mapper from battery optimization</string>
+
+    <string name="notification_channel_download_name">Offline map downloads</string>
+    <string name="notification_channel_download_desc">Progress of offline map area downloads</string>
+    <string name="download_notification_title">Downloading offline map</string>
+    <string name="download_notification_text">%1$s · %2$d%%</string>
+    <string name="download_notification_cancel">Cancel</string>
+</resources>

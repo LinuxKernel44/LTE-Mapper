@@ -1,0 +1,36 @@
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+build/
+.gradle/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Gradle / local environment
+local.properties
+gradle-app.setting
+.gradletasknamecache
+
+# IDE
+*.iml
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Signing secrets — never commit these.
+keystore.properties
+keystore/*.jks
+keystore/*.keystore
+*.jks
+*.keystore
+*.p12
+*.pepk

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="lte_mapper.db" />
+        <exclude domain="database" path="lte_mapper.db-wal" />
+        <exclude domain="database" path="lte_mapper.db-shm" />
+        <exclude domain="sharedpref" path="mapping_settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="lte_mapper.db" />
+        <exclude domain="database" path="lte_mapper.db-wal" />
+        <exclude domain="database" path="lte_mapper.db-shm" />
+    </device-transfer>
+</data-extraction-rules>
