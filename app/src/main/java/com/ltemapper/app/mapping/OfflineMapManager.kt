@@ -94,7 +94,8 @@ class OfflineMapManager @Inject constructor(@ApplicationContext private val cont
         val cacheManager = runCatching {
             CacheManager(tileSource, tileWriter, source.minZoom, source.maxZoom)
         }.getOrElse {
-            send(TileDownloadProgress.Failed("Could not prepare the tile cache: ${it.message ?: "unknown error"}"))
+            // Plausibly transient (disk contention, a momentarily locked cache DB) — worth a retry.
+            send(TileDownloadProgress.Failed("Could not prepare the tile cache: ${it.message ?: "unknown error"}", retryable = true))
             return@channelFlow
         }
 

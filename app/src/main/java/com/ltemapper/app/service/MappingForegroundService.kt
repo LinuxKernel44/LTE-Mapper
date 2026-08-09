@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ltemapper.app.MainActivity
 import com.ltemapper.app.R
@@ -21,6 +22,7 @@ import com.ltemapper.app.location.LocationTracker
 import com.ltemapper.app.telephony.TelephonyRepository
 import com.ltemapper.app.util.formatDistance
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,8 +41,16 @@ class MappingForegroundService : Service() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var sessionState: MappingSessionState
     @Inject lateinit var classifySignal: ClassifySignalUseCase
+    @Inject lateinit var sessionPersistence: MappingSessionPersistence
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Without this, an uncaught exception from the collection pipeline (e.g. a transient
+     * SQLiteException on insert) would crash the whole process and abandon the session mid-write.
+     * With it, we get a chance to close the session out cleanly instead. */
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Mapping session terminated unexpectedly", throwable)
+        handleUnexpectedFailure()
+    }
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + exceptionHandler)
     private var mappingJob: Job? = null
     private var telephonyJob: Job? = null
 
@@ -57,31 +67,50 @@ class MappingForegroundService : Service() {
         when (intent?.action) {
             ACTION_START -> startMapping()
             ACTION_STOP -> stopMapping()
+            null -> resumeAfterProcessRestart()
         }
         return START_STICKY
     }
 
-    private fun startMapping() {
+    /** START_STICKY can make the OS relaunch this service with a null Intent after killing its
+     * process mid-session (low memory, etc.). Without this, the interrupted session would never
+     * see [MappingRepository.endSession] and would stay open (endTime = null) forever. Resume in
+     * place from the durable snapshot instead. */
+    private fun resumeAfterProcessRestart() {
+        if (mappingJob != null) return
+        val saved = sessionPersistence.load() ?: return
+        startMapping(resume = saved)
+    }
+
+    private fun startMapping(resume: MappingSessionPersistence.State? = null) {
         if (mappingJob != null) return
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(0, 0.0))
+        startForeground(NOTIFICATION_ID, buildNotification(resume?.measurementCount ?: 0, resume?.distanceMeters ?: 0.0))
 
         mappingJob = serviceScope.launch {
             val settings = settingsRepository.settingsFlow.first()
             locationFilter = LocationFilter(settings.minDistanceMeters, settings.minIntervalMillis)
-            accumulatedDistance = 0.0
-            measurementCount = 0
-            lastAcceptedLocation = null
+            accumulatedDistance = resume?.distanceMeters ?: 0.0
+            measurementCount = resume?.measurementCount ?: 0
+            lastAcceptedLocation = resume?.takeIf { it.lastLatitude != null && it.lastLongitude != null }?.let {
+                com.ltemapper.app.domain.model.LocationSample(
+                    latitude = it.lastLatitude!!,
+                    longitude = it.lastLongitude!!,
+                    accuracyMeters = null,
+                    timestamp = it.lastTimestamp,
+                )
+            }
 
-            val sessionId = mappingRepository.createSession(System.currentTimeMillis())
+            val sessionId = resume?.sessionId ?: mappingRepository.createSession(System.currentTimeMillis())
             currentSessionId = sessionId
+            persistState(sessionId)
             sessionState.update {
                 LiveMappingState(isMapping = true, sessionId = sessionId, startTime = System.currentTimeMillis())
             }
 
             telephonyJob = launch {
-                telephonyRepository.observeCellSignal().collect { info ->
+                telephonyRepository.observeCellSignal(settings.monitoredSubscriptionId).collect { info ->
                     lastCellSignal = info
                     sessionState.update { it.copy(latestCellSignal = info) }
                 }
@@ -128,6 +157,7 @@ class MappingForegroundService : Service() {
                 mappingRepository.insertMeasurement(measurement)
                 measurementCount++
                 mappingRepository.updateSessionProgress(sessionId, accumulatedDistance)
+                persistState(sessionId)
 
                 sessionState.update {
                     it.copy(
@@ -141,6 +171,19 @@ class MappingForegroundService : Service() {
         }
     }
 
+    private fun persistState(sessionId: Long) {
+        sessionPersistence.save(
+            MappingSessionPersistence.State(
+                sessionId = sessionId,
+                distanceMeters = accumulatedDistance,
+                measurementCount = measurementCount,
+                lastLatitude = lastAcceptedLocation?.latitude,
+                lastLongitude = lastAcceptedLocation?.longitude,
+                lastTimestamp = lastAcceptedLocation?.timestamp ?: System.currentTimeMillis(),
+            ),
+        )
+    }
+
     private fun stopMapping() {
         val sessionId = currentSessionId
         val finalDistance = accumulatedDistance
@@ -150,13 +193,29 @@ class MappingForegroundService : Service() {
         telephonyJob = null
         currentSessionId = null
 
-        serviceScope.launch {
-            if (sessionId != null) {
-                mappingRepository.endSession(sessionId, System.currentTimeMillis(), finalDistance)
-            }
-            sessionState.update { LiveMappingState() }
-        }
+        serviceScope.launch { finishSession(sessionId, finalDistance) }
+    }
 
+    private fun handleUnexpectedFailure() {
+        val sessionId = currentSessionId
+        val finalDistance = accumulatedDistance
+        mappingJob = null
+        telephonyJob = null
+        currentSessionId = null
+        serviceScope.launch { finishSession(sessionId, finalDistance) }
+    }
+
+    /** Ends the session (if any) and only then tears down the foreground service, so
+     * [onDestroy]'s `serviceScope.cancel()` can never race the DB write that closes it out — the
+     * previous version called `stopSelf()` right after launching this write, which could cancel
+     * it before it completed and leave the session's `endTime` unset. */
+    private suspend fun finishSession(sessionId: Long?, finalDistance: Double) {
+        if (sessionId != null) {
+            runCatching { mappingRepository.endSession(sessionId, System.currentTimeMillis(), finalDistance) }
+                .onFailure { Log.e(TAG, "Failed to close session $sessionId", it) }
+        }
+        sessionPersistence.clear()
+        sessionState.update { LiveMappingState() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -215,6 +274,7 @@ class MappingForegroundService : Service() {
     companion object {
         const val ACTION_START = "com.ltemapper.app.action.START_MAPPING"
         const val ACTION_STOP = "com.ltemapper.app.action.STOP_MAPPING"
+        private const val TAG = "MappingService"
         private const val CHANNEL_ID = "mapping_channel"
         private const val NOTIFICATION_ID = 1001
 

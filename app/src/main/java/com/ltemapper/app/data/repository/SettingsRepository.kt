@@ -25,6 +25,7 @@ private object Keys {
     val MIN_INTERVAL_MS = longPreferencesKey("min_interval_ms")
     val LOCATION_UPDATE_INTERVAL_MS = longPreferencesKey("location_update_interval_ms")
     val BACKGROUND_MAPPING_ENABLED = booleanPreferencesKey("background_mapping_enabled")
+    val MONITORED_SUBSCRIPTION_ID = intPreferencesKey("monitored_subscription_id")
     val EXCELLENT_MIN_DBM = intPreferencesKey("excellent_min_dbm")
     val GOOD_MIN_DBM = intPreferencesKey("good_min_dbm")
     val FAIR_MIN_DBM = intPreferencesKey("fair_min_dbm")
@@ -46,6 +47,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             minIntervalMillis = prefs[Keys.MIN_INTERVAL_MS] ?: defaults.minIntervalMillis,
             locationUpdateIntervalMillis = prefs[Keys.LOCATION_UPDATE_INTERVAL_MS] ?: defaults.locationUpdateIntervalMillis,
             backgroundMappingEnabled = prefs[Keys.BACKGROUND_MAPPING_ENABLED] ?: defaults.backgroundMappingEnabled,
+            monitoredSubscriptionId = prefs[Keys.MONITORED_SUBSCRIPTION_ID] ?: defaults.monitoredSubscriptionId,
             signalThresholds = SignalThresholds(
                 excellentMinDbm = prefs[Keys.EXCELLENT_MIN_DBM] ?: defaults.signalThresholds.excellentMinDbm,
                 goodMinDbm = prefs[Keys.GOOD_MIN_DBM] ?: defaults.signalThresholds.goodMinDbm,
@@ -82,6 +84,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             prefs[Keys.MIN_INTERVAL_MS] = minIntervalMillis
             prefs[Keys.LOCATION_UPDATE_INTERVAL_MS] = locationUpdateIntervalMillis
             prefs[Keys.BACKGROUND_MAPPING_ENABLED] = backgroundMappingEnabled
+        }
+    }
+
+    /** Null pins mapping back to "follow the default data SIM" instead of a specific
+     * subscription — clears the stored key rather than writing a sentinel value. */
+    suspend fun updateMonitoredSubscriptionId(subscriptionId: Int?) {
+        context.dataStore.edit { prefs ->
+            if (subscriptionId == null) prefs.remove(Keys.MONITORED_SUBSCRIPTION_ID) else prefs[Keys.MONITORED_SUBSCRIPTION_ID] = subscriptionId
         }
     }
 

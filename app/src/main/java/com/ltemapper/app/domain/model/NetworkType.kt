@@ -3,6 +3,7 @@ package com.ltemapper.app.domain.model
 /** Radio access technology family, coarse enough to be stable across Android/OEM versions. */
 enum class RanType(val label: String) {
     GSM("2G"),
+    CDMA("CDMA"),
     UMTS("3G"),
     LTE("4G LTE"),
     NR("5G"),

@@ -32,20 +32,20 @@ class TelephonyRepositoryImpl @Inject constructor(
     private val subscriptionManager: SubscriptionManager? = context.getSystemService()
 
     @SuppressLint("MissingPermission")
-    override fun observeCellSignal(): Flow<CellSignalInfo> = callbackFlow {
+    override fun observeCellSignal(preferredSubscriptionId: Int?): Flow<CellSignalInfo> = callbackFlow {
         if (!context.hasPhoneStatePermission()) {
-            trySend(CellSignalInfo.unavailable("READ_PHONE_STATE not granted"))
+            trySend(CellSignalInfo.unavailable(REASON_NO_PHONE_STATE_PERMISSION))
             close()
             return@callbackFlow
         }
         val tm = telephonyManager
         if (tm == null) {
-            trySend(CellSignalInfo.unavailable("No telephony hardware"))
+            trySend(CellSignalInfo.unavailable(REASON_NO_TELEPHONY_HARDWARE))
             close()
             return@callbackFlow
         }
 
-        val subId = SubscriptionManager.getDefaultDataSubscriptionId()
+        val subId = resolveSubscriptionId(preferredSubscriptionId)
         val targetTm = if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
             runCatching { tm.createForSubscriptionId(subId) }.getOrDefault(tm)
         } else tm
@@ -120,6 +120,19 @@ class TelephonyRepositoryImpl @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
+    /** Uses [preferred] only if that subscription is still active — a saved setting can outlive
+     * the SIM it points to (removed, swapped) — falling back to the default data SIM otherwise. */
+    @SuppressLint("MissingPermission")
+    private fun resolveSubscriptionId(preferred: Int?): Int {
+        if (preferred != null && preferred != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            val isStillActive = runCatching {
+                subscriptionManager?.activeSubscriptionInfoList.orEmpty().any { it.subscriptionId == preferred }
+            }.getOrDefault(false)
+            if (isStillActive) return preferred
+        }
+        return SubscriptionManager.getDefaultDataSubscriptionId()
+    }
+
     @SuppressLint("MissingPermission")
     private fun activeSimSlotFor(subId: Int): Int? {
         if (!context.hasPhoneStatePermission()) return null
@@ -127,6 +140,15 @@ class TelephonyRepositoryImpl @Inject constructor(
         return runCatching {
             sm.activeSubscriptionInfoList.orEmpty().firstOrNull { it.subscriptionId == subId }?.simSlotIndex
         }.getOrNull()
+    }
+
+    companion object {
+        // Short technical codes, not user-facing prose — connectionState is a persisted/exported
+        // data field (Measurement.connectionState), alongside "REGISTERED"/"NEIGHBOR" from
+        // CellInfoParser, not a place to stash UI copy.
+        private const val REASON_NO_PHONE_STATE_PERMISSION = "NO_PHONE_STATE_PERMISSION"
+        private const val REASON_NO_TELEPHONY_HARDWARE = "NO_TELEPHONY_HARDWARE"
+        private const val REASON_NO_LOCATION_PERMISSION = "NO_LOCATION_PERMISSION"
     }
 
     private fun rawDataNetworkTypeToRan(networkType: Int): RanType = when (networkType) {
@@ -160,12 +182,19 @@ class TelephonyRepositoryImpl @Inject constructor(
 
         fun onCellInfoChanged(cellInfoList: List<android.telephony.CellInfo>?) {
             if (!hasLocationPermission) {
-                emitFallback("Location permission required for cell identity")
+                emitFallback(REASON_NO_LOCATION_PERMISSION)
                 return
             }
             val list = cellInfoList.orEmpty()
-            val registered = list.firstOrNull { it.isRegistered } ?: list.firstOrNull()
-            val parsed = registered?.let { CellInfoParser.parse(it, subscriptionId, simSlotIndex, operatorName) }
+            // Android doesn't guarantee getAllCellInfo()/onCellInfoChanged() ordering, and in a
+            // handover no entry may be marked isRegistered yet. Falling back to the strongest
+            // signal (rather than an arbitrary list position) is far more likely to actually be
+            // the serving cell than whichever entry happened to come first.
+            val registered = list.firstOrNull { it.isRegistered }
+            val chosen = registered ?: list.maxByOrNull { cell ->
+                runCatching { cell.cellSignalStrength.dbm }.getOrDefault(Int.MIN_VALUE)
+            }
+            val parsed = chosen?.let { CellInfoParser.parse(it, subscriptionId, simSlotIndex, operatorName) }
             if (parsed != null) {
                 lastParsed = parsed
                 onUpdate(parsed)

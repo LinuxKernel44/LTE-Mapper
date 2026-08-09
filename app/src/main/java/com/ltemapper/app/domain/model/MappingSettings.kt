@@ -6,6 +6,10 @@ data class MappingSettings(
     val minIntervalMillis: Long = 3_000L,
     val locationUpdateIntervalMillis: Long = 2_000L,
     val backgroundMappingEnabled: Boolean = false,
+    /** Which SIM's signal to record on a dual-SIM device. Null means "follow the default data
+     * SIM" (the previous, only, behavior) rather than pinning to a specific subscription that
+     * might later become inactive. */
+    val monitoredSubscriptionId: Int? = null,
     val signalThresholds: SignalThresholds = SignalThresholds.DEFAULT,
     val tileSource: MapTileSource = MapTileSource.MAPNIK,
     val customTileSource: CustomTileSourceConfig = CustomTileSourceConfig(),

@@ -26,5 +26,8 @@ sealed interface TileDownloadProgress {
         val failedTiles: Int = 0,
     ) : TileDownloadProgress
 
-    data class Failed(val message: String) : TileDownloadProgress
+    /** [retryable] distinguishes a transient failure (worth a WorkManager retry with backoff)
+     * from a structural one — a forbidden source, an empty plan, or an explicit user cancellation
+     * — where retrying the exact same request would just fail the same way again. */
+    data class Failed(val message: String, val retryable: Boolean = false) : TileDownloadProgress
 }

@@ -38,7 +38,16 @@ object TileMath {
         val xMax = tileX(box.maxLon, zoom)
         val yMin = tileY(box.maxLat, zoom) // north edge maps to the smaller Y
         val yMax = tileY(box.minLat, zoom)
-        val width = (xMax - xMin).toLong() + 1
+        val width = if (box.minLon <= box.maxLon) {
+            (xMax - xMin).toLong() + 1
+        } else {
+            // Antimeridian crossing (e.g. Fiji, the Aleutians) — Nominatim legitimately returns
+            // west > east for these, meaning the box wraps eastward from minLon, through
+            // 180°/-180°, to maxLon. xMin > xMax in that case, so the naive (xMax - xMin) would
+            // be negative; wrap around the full tile row instead.
+            val tilesPerAxis = 1L shl zoom
+            (tilesPerAxis - xMin) + (xMax + 1)
+        }
         val height = (yMax - yMin).toLong() + 1
         return width * height
     }

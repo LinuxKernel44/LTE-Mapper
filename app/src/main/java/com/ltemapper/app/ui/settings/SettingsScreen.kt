@@ -1,7 +1,10 @@
 package com.ltemapper.app.ui.settings
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -49,7 +53,9 @@ import com.ltemapper.app.R
 import com.ltemapper.app.domain.model.MappingSettings
 import com.ltemapper.app.domain.model.SignalThresholds
 import com.ltemapper.app.export.ExportFormat
+import com.ltemapper.app.util.hasBackgroundLocationPermission
 import com.ltemapper.app.util.requestIgnoreBatteryOptimizationsIntent
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -63,6 +69,25 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            viewModel.setBackgroundMappingEnabled(true)
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Background location permission denied — background mapping stays off.")
+            }
+        }
+    }
+    val onRequestBackgroundMapping: () -> Unit = {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || context.hasBackgroundLocationPermission()) {
+            viewModel.setBackgroundMappingEnabled(true)
+        } else {
+            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
 
     // The battery-optimization exemption is granted/denied in a system dialog outside our
     // process, so re-check it whenever the user comes back to this screen.
@@ -115,6 +140,7 @@ fun SettingsScreen(
                 MappingSettingsCard(
                     settings = state.mappingSettings,
                     onChange = viewModel::updateMappingKnobs,
+                    onRequestBackgroundMapping = onRequestBackgroundMapping,
                 )
             }
 
@@ -134,7 +160,13 @@ fun SettingsScreen(
             }
 
             item { SectionTitle("Multi-SIM") }
-            item { SimInfoCard(state.activeSims) }
+            item {
+                SimInfoCard(
+                    sims = state.activeSims,
+                    monitoredSubscriptionId = state.mappingSettings.monitoredSubscriptionId,
+                    onSelect = viewModel::setMonitoredSubscriptionId,
+                )
+            }
 
             item { SectionTitle("Offline maps") }
             item {
@@ -189,11 +221,15 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun MappingSettingsCard(settings: MappingSettings, onChange: (Float, Long, Long, Boolean) -> Unit) {
+private fun MappingSettingsCard(
+    settings: MappingSettings,
+    onChange: (Float, Long, Long, Boolean) -> Unit,
+    onRequestBackgroundMapping: () -> Unit,
+) {
     var minDistance by remember(settings.minDistanceMeters) { mutableStateOf(settings.minDistanceMeters) }
     var minInterval by remember(settings.minIntervalMillis) { mutableStateOf(settings.minIntervalMillis.toFloat()) }
     var locationInterval by remember(settings.locationUpdateIntervalMillis) { mutableStateOf(settings.locationUpdateIntervalMillis.toFloat()) }
-    var backgroundEnabled by remember(settings.backgroundMappingEnabled) { mutableStateOf(settings.backgroundMappingEnabled) }
+    val backgroundEnabled = settings.backgroundMappingEnabled
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -223,15 +259,23 @@ private fun MappingSettingsCard(settings: MappingSettings, onChange: (Float, Lon
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Background mapping")
                     Text(
-                        "Continue mapping with the screen off (requires \"Allow all the time\" location).",
+                        "Keep mapping after you leave the app or lock the screen (requires \"Allow all the time\" location). " +
+                            "Off by default: leaving the app stops mapping and closes out the session.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Switch(
                     checked = backgroundEnabled,
-                    onCheckedChange = {
-                        backgroundEnabled = it
-                        onChange(minDistance, minInterval.toLong(), locationInterval.toLong(), backgroundEnabled)
+                    onCheckedChange = { turnedOn ->
+                        if (turnedOn) {
+                            // Gated on ACCESS_BACKGROUND_LOCATION: onRequestBackgroundMapping
+                            // only flips the setting on once that permission is confirmed granted,
+                            // so `backgroundEnabled` (read straight from settings) updates itself
+                            // once that round-trips back through the ViewModel.
+                            onRequestBackgroundMapping()
+                        } else {
+                            onChange(minDistance, minInterval.toLong(), locationInterval.toLong(), false)
+                        }
                     },
                 )
             }
@@ -305,21 +349,56 @@ private fun ThresholdField(label: String, value: String, onValueChange: (String)
 }
 
 @Composable
-private fun SimInfoCard(sims: List<com.ltemapper.app.domain.model.SimInfo>) {
+private fun SimInfoCard(
+    sims: List<com.ltemapper.app.domain.model.SimInfo>,
+    monitoredSubscriptionId: Int?,
+    onSelect: (Int?) -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (sims.isEmpty()) {
                 Text("No SIM information available.", style = MaterialTheme.typography.bodyMedium)
+            } else if (sims.size == 1) {
+                val sim = sims.single()
+                Text(
+                    "Slot ${sim.simSlotIndex + 1}: ${sim.carrierName ?: sim.displayName ?: "Unknown"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             } else {
+                Text(
+                    "Multiple SIMs detected — choose which one to record signal from.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                SimRow(
+                    label = "Automatic (follow the default data SIM)",
+                    selected = monitoredSubscriptionId == null,
+                    onClick = { onSelect(null) },
+                )
                 sims.forEach { sim ->
-                    Text(
-                        "Slot ${sim.simSlotIndex + 1}: ${sim.carrierName ?: sim.displayName ?: "Unknown"}" +
-                            if (sim.isDefaultData) " (data)" else "",
-                        style = MaterialTheme.typography.bodyMedium,
+                    SimRow(
+                        label = "Slot ${sim.simSlotIndex + 1}: ${sim.carrierName ?: sim.displayName ?: "Unknown"}" +
+                            if (sim.isDefaultData) " (default data)" else "",
+                        selected = monitoredSubscriptionId == sim.subscriptionId,
+                        onClick = { onSelect(sim.subscriptionId) },
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SimRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        androidx.compose.material3.RadioButton(selected = selected, onClick = onClick)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

@@ -41,7 +41,9 @@ class LocationTrackerImpl @Inject constructor(
 
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { trySend(it.toSample()) }
+                // The provider can batch several fixes into one callback; sending only the last
+                // one silently drops the earlier points in the batch instead of recording them.
+                result.locations.forEach { trySend(it.toSample()) }
             }
         }
 

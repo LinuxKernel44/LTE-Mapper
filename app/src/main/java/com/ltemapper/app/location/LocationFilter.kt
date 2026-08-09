@@ -14,10 +14,18 @@ import kotlin.math.sqrt
 class LocationFilter(
     private val minDistanceMeters: Float,
     private val minIntervalMillis: Long,
+    private val maxAcceptableAccuracyMeters: Float = MAX_ACCEPTABLE_ACCURACY_METERS,
 ) {
     private var lastAccepted: LocationSample? = null
 
     fun shouldAccept(sample: LocationSample): Boolean {
+        // A fix this imprecise (typically multipath indoors/urban canyon) is unusable: accepting
+        // it would silently corrupt the accumulated distance and pollute the heatmap. Fixes with
+        // moderate accuracy are still accepted — they're flagged via LocationSample.isLowAccuracy
+        // rather than dropped, so the caller can decide how to treat them.
+        val accuracy = sample.accuracyMeters
+        if (accuracy != null && accuracy > maxAcceptableAccuracyMeters) return false
+
         val previous = lastAccepted
         if (previous == null) {
             lastAccepted = sample
@@ -34,6 +42,8 @@ class LocationFilter(
     }
 
     companion object {
+        /** Above this horizontal accuracy, a fix is rejected outright rather than recorded. */
+        const val MAX_ACCEPTABLE_ACCURACY_METERS = 100f
         private const val EARTH_RADIUS_METERS = 6_371_000.0
 
         fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

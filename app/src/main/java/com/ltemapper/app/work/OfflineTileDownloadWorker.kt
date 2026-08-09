@@ -79,10 +79,15 @@ class OfflineTileDownloadWorker @AssistedInject constructor(
             }
             is TileDownloadProgress.SourceForbidsBulkDownload ->
                 failure("\"${result.sourceLabel}\" doesn't allow downloading areas in advance. Pick a download-friendly map source.")
-            is TileDownloadProgress.Failed -> failure(result.message)
-            else -> failure("Download did not complete")
+            is TileDownloadProgress.Failed -> retryOrFail(result.message, retryable = result.retryable)
+            // The flow closed without ever reaching a terminal state (e.g. the process was torn
+            // down mid-download) — ambiguous, but likely transient, so it's worth a bounded retry.
+            else -> retryOrFail("Download did not complete", retryable = true)
         }
     }
+
+    private fun retryOrFail(message: String, retryable: Boolean): Result =
+        if (DownloadRetryPolicy.shouldRetry(retryable, runAttemptCount)) Result.retry() else failure(message)
 
     private suspend fun collectDownload(
         name: String,

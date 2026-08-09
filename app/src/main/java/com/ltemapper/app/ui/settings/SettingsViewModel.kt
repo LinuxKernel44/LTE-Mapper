@@ -15,7 +15,6 @@ import com.ltemapper.app.export.CsvImporter
 import com.ltemapper.app.export.ExportFormat
 import com.ltemapper.app.export.GeoJsonExporter
 import com.ltemapper.app.export.KmlExporter
-import com.ltemapper.app.location.LocationFilter
 import com.ltemapper.app.telephony.TelephonyRepository
 import com.ltemapper.app.util.isIgnoringBatteryOptimizations
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -84,6 +83,27 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.updateThresholds(thresholds) }
     }
 
+    /** Pins mapping to a specific SIM's signal on a dual-SIM device; null goes back to following
+     * the default data SIM. */
+    fun setMonitoredSubscriptionId(subscriptionId: Int?) {
+        viewModelScope.launch { settingsRepository.updateMonitoredSubscriptionId(subscriptionId) }
+    }
+
+    /** Sets just the background-mapping flag, leaving the other mapping knobs untouched. Split
+     * out from [updateMappingKnobs] so the caller (a permission-gated toggle) doesn't need to know
+     * the current slider values to flip this one field. */
+    fun setBackgroundMappingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = uiState.value.mappingSettings
+            settingsRepository.updateMappingKnobs(
+                current.minDistanceMeters,
+                current.minIntervalMillis,
+                current.locationUpdateIntervalMillis,
+                enabled,
+            )
+        }
+    }
+
     fun exportSession(sessionId: Long, format: ExportFormat, uri: Uri) {
         viewModelScope.launch {
             val count = withContext(Dispatchers.IO) {
@@ -102,22 +122,7 @@ class SettingsViewModel @Inject constructor(
     fun importCsv(uri: Uri) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    val sessionId = mappingRepository.createSession(System.currentTimeMillis())
-                    val parsed = csvImporter.parse(input, sessionId)
-                    if (parsed.measurements.isNotEmpty()) {
-                        mappingRepository.importMeasurements(sessionId, parsed.measurements)
-                        val sorted = parsed.measurements.sortedBy { it.timestamp }
-                        var distance = 0.0
-                        for (i in 1 until sorted.size) {
-                            distance += LocationFilter.haversineMeters(
-                                sorted[i - 1].latitude, sorted[i - 1].longitude, sorted[i].latitude, sorted[i].longitude,
-                            )
-                        }
-                        mappingRepository.endSession(sessionId, sorted.last().timestamp, distance)
-                    }
-                    parsed
-                }
+                context.contentResolver.openInputStream(uri)?.use { input -> csvImporter.import(input) }
             }
             statusMessage.value = if (result == null) {
                 "Import failed: could not open file"

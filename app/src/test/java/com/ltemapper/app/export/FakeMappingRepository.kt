@@ -79,4 +79,15 @@ class FakeMappingRepository(measurements: List<Measurement> = emptyList()) : Map
     override suspend fun importMeasurements(sessionId: Long, measurements: List<Measurement>) {
         this.measurements.addAll(measurements.map { it.copy(sessionId = sessionId) })
     }
+
+    override suspend fun finalizeImportedSession(sessionId: Long, startTime: Long, endTime: Long, distanceMeters: Double) {
+        val index = sessions.indexOfFirst { it.id == sessionId }
+        if (index < 0) return
+        sessions[index] = sessions[index].copy(
+            startTime = startTime,
+            endTime = endTime,
+            distanceMeters = distanceMeters,
+            measurementCount = measurements.count { it.sessionId == sessionId },
+        )
+    }
 }

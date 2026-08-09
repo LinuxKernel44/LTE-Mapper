@@ -39,28 +39,31 @@ class CsvExporter @Inject constructor(private val repository: MappingRepository)
 
     private fun toCsvRow(m: Measurement): String {
         val timestampIso = DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(m.timestamp).truncatedTo(ChronoUnit.SECONDS))
+        // operatorName is broadcast by the cell tower, not trusted input, so — unlike every other
+        // column here — it goes through the formula-injection guard on top of ordinary CSV
+        // escaping (see CsvFormat.escapeUntrustedText).
         val values = listOf(
-            timestampIso,
-            m.latitude.toString(),
-            m.longitude.toString(),
-            m.accuracyMeters?.toString().orEmpty(),
-            m.networkType.name,
-            m.rssiDbm?.toString().orEmpty(),
-            m.rsrpDbm?.toString().orEmpty(),
-            m.rsrqDb?.toString().orEmpty(),
-            m.rssnrDb?.toString().orEmpty(),
-            m.cqi?.toString().orEmpty(),
-            m.pci?.toString().orEmpty(),
-            m.earfcn?.toString().orEmpty(),
-            m.cellId?.toString().orEmpty(),
-            m.tac?.toString().orEmpty(),
-            m.mcc.orEmpty(),
-            m.mnc.orEmpty(),
-            m.operatorName.orEmpty(),
-            m.signalQuality.name,
-            m.isLowAccuracy.toString(),
+            CsvFormat.escape(timestampIso),
+            CsvFormat.escape(m.latitude.toString()),
+            CsvFormat.escape(m.longitude.toString()),
+            CsvFormat.escape(m.accuracyMeters?.toString().orEmpty()),
+            CsvFormat.escape(m.networkType.name),
+            CsvFormat.escape(m.rssiDbm?.toString().orEmpty()),
+            CsvFormat.escape(m.rsrpDbm?.toString().orEmpty()),
+            CsvFormat.escape(m.rsrqDb?.toString().orEmpty()),
+            CsvFormat.escape(m.rssnrDb?.toString().orEmpty()),
+            CsvFormat.escape(m.cqi?.toString().orEmpty()),
+            CsvFormat.escape(m.pci?.toString().orEmpty()),
+            CsvFormat.escape(m.earfcn?.toString().orEmpty()),
+            CsvFormat.escape(m.cellId?.toString().orEmpty()),
+            CsvFormat.escape(m.tac?.toString().orEmpty()),
+            CsvFormat.escape(m.mcc.orEmpty()),
+            CsvFormat.escape(m.mnc.orEmpty()),
+            CsvFormat.escapeUntrustedText(m.operatorName.orEmpty()),
+            CsvFormat.escape(m.signalQuality.name),
+            CsvFormat.escape(m.isLowAccuracy.toString()),
         )
-        return values.joinToString(",") { CsvFormat.escape(it) }
+        return values.joinToString(",")
     }
 
     companion object {

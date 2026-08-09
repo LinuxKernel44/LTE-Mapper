@@ -47,10 +47,32 @@ class LocationFilterTest {
         assertTrue(distance in 110_000.0..112_000.0)
     }
 
-    private fun sample(lat: Double, lon: Double, timestamp: Long) = LocationSample(
+    @Test
+    fun `fix with accuracy worse than the ceiling is rejected outright`() {
+        val filter = LocationFilter(minDistanceMeters = 8f, minIntervalMillis = 1000L)
+        assertTrue(filter.shouldAccept(sample(0.0, 0.0, 0)))
+        assertFalse(filter.shouldAccept(sample(0.0002, 0.0, 5000, accuracy = 150f)))
+    }
+
+    @Test
+    fun `fix with moderate accuracy is still accepted, only flagged`() {
+        val filter = LocationFilter(minDistanceMeters = 8f, minIntervalMillis = 1000L)
+        assertTrue(filter.shouldAccept(sample(0.0, 0.0, 0)))
+        // 45m accuracy is poor but below the hard rejection ceiling, unlike LOW_ACCURACY_THRESHOLD.
+        assertTrue(filter.shouldAccept(sample(0.0002, 0.0, 5000, accuracy = 45f)))
+    }
+
+    @Test
+    fun `fix with unknown accuracy is not rejected by the accuracy check`() {
+        val filter = LocationFilter(minDistanceMeters = 8f, minIntervalMillis = 1000L)
+        assertTrue(filter.shouldAccept(sample(0.0, 0.0, 0, accuracy = null)))
+        assertTrue(filter.shouldAccept(sample(0.0002, 0.0, 5000, accuracy = null)))
+    }
+
+    private fun sample(lat: Double, lon: Double, timestamp: Long, accuracy: Float? = 5f) = LocationSample(
         latitude = lat,
         longitude = lon,
-        accuracyMeters = 5f,
+        accuracyMeters = accuracy,
         timestamp = timestamp,
     )
 }

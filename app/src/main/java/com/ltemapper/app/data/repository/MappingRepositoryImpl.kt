@@ -128,6 +128,11 @@ class MappingRepositoryImpl @Inject constructor(
         measurementDao.insertAll(measurements.map { it.copy(sessionId = sessionId).toEntity() })
     }
 
+    override suspend fun finalizeImportedSession(sessionId: Long, startTime: Long, endTime: Long, distanceMeters: Double) {
+        val count = measurementDao.count(sessionId)
+        sessionDao.finishImportedSession(sessionId, startTime, endTime, distanceMeters, count)
+    }
+
     private fun acceptedTypes(filter: NetworkFilter): List<String> = when (filter) {
         NetworkFilter.ALL -> RanType.entries.map { it.name }
         NetworkFilter.LTE_ONLY -> listOf(RanType.LTE.name)

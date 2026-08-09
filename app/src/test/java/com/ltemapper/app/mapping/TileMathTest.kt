@@ -70,4 +70,25 @@ class TileMathTest {
         assertEquals(1L, TileMath.tileCountAtZoom(point, 15))
         assertEquals(3L, TileMath.tileCount(point, 13, 15))
     }
+
+    @Test
+    fun `antimeridian-crossing box wraps instead of going negative`() {
+        // Fiji-like box: west (minLon) is east of east (maxLon), wrapping across 180/-180.
+        val fiji = BoundingBox(minLat = -20.0, maxLat = -15.0, minLon = 177.0, maxLon = -178.0)
+        val count = TileMath.tileCountAtZoom(fiji, 6)
+        assertTrue("wrapped tile count must be positive, was $count", count > 0)
+    }
+
+    @Test
+    fun `antimeridian-crossing box matches the equivalent non-crossing box by symmetry`() {
+        // A box spanning [170, 180] and its mirror [-180, -170] should together tile the same as
+        // one box that wraps across the seam from 170 to -170.
+        val zoom = 8
+        val east = BoundingBox(minLat = 0.0, maxLat = 1.0, minLon = 170.0, maxLon = 179.9999)
+        val west = BoundingBox(minLat = 0.0, maxLat = 1.0, minLon = -179.9999, maxLon = -170.0)
+        val wrapped = BoundingBox(minLat = 0.0, maxLat = 1.0, minLon = 170.0, maxLon = -170.0)
+
+        val expected = TileMath.tileCountAtZoom(east, zoom) + TileMath.tileCountAtZoom(west, zoom)
+        assertEquals(expected, TileMath.tileCountAtZoom(wrapped, zoom))
+    }
 }

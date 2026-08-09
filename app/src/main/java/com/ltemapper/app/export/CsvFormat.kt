@@ -29,9 +29,21 @@ object CsvFormat {
         COL_TAC, COL_MCC, COL_MNC, COL_OPERATOR, COL_SIGNAL_QUALITY, COL_LOW_ACCURACY,
     )
 
+    /** Leading characters Excel/Sheets/LibreOffice interpret as the start of a formula. */
+    private val FORMULA_TRIGGER_CHARS = charArrayOf('=', '+', '-', '@')
+
     fun escape(value: String): String {
         val needsQuoting = value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r')
         return if (needsQuoting) "\"" + value.replace("\"", "\"\"") + "\"" else value
+    }
+
+    /** Same as [escape], but also neutralizes CSV/formula injection by prefixing a leading
+     * apostrophe when the value starts with a formula-trigger character. Use this only for
+     * free-text fields sourced from untrusted network broadcasts (operator name) — applying it to
+     * numeric fields would corrupt legitimate negative dBm values, which all start with '-'. */
+    fun escapeUntrustedText(value: String): String {
+        val neutralized = if (value.isNotEmpty() && value[0] in FORMULA_TRIGGER_CHARS) "'$value" else value
+        return escape(neutralized)
     }
 
     /** Minimal RFC-4180-ish line splitter: handles quoted fields containing commas/escaped quotes. */

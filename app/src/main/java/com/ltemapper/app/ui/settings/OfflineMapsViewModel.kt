@@ -52,6 +52,12 @@ data class OfflineMapsUiState(
     /** The chosen server refuses bulk pre-fetching, so nothing can be downloaded until it changes. */
     val sourceBlocksDownloads: Boolean get() = !tileSource.supportsBulkDownload
 
+    /** A huge bounding box (e.g. a whole country) at a high zoom can multiply out to millions of
+     * tiles regardless of the zoom slider alone — this catches that case independently of it. */
+    val exceedsHardCap: Boolean get() = (estimatedTiles ?: 0L) > MAX_TILES_HARD_CAP
+
+    val canStartDownload: Boolean get() = !sourceBlocksDownloads && !exceedsHardCap
+
     companion object {
         const val DEFAULT_MIN_ZOOM = 8
         const val DEFAULT_MAX_ZOOM = 14
@@ -59,6 +65,11 @@ data class OfflineMapsUiState(
         const val MAX_SELECTABLE_ZOOM = 17
         /** Rough average PNG tile weight, used only to turn a tile count into a human estimate. */
         const val AVG_TILE_BYTES = 12_000L
+        /** Hard ceiling on a single download request (~3.6 GB at [AVG_TILE_BYTES]). Past this
+         * it's almost certainly an accidental whole-country-at-high-zoom request rather than an
+         * intentional large-but-reasonable one; splitting into chunks (see [TileChunkPlanner])
+         * keeps it *running*, but doesn't make an unbounded request a good idea to start. */
+        const val MAX_TILES_HARD_CAP = 300_000L
     }
 }
 
@@ -217,6 +228,7 @@ class OfflineMapsViewModel @Inject constructor(
     fun startDownload() {
         val state = _uiState.value
         val place = state.selectedPlace ?: return
+        if (!state.canStartDownload) return
         downloadScheduler.enqueue(
             name = place.displayName,
             box = place.boundingBox,

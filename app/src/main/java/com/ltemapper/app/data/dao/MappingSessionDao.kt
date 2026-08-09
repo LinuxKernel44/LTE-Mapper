@@ -23,6 +23,12 @@ interface MappingSessionDao {
     @Query("UPDATE mapping_sessions SET endTime = :endTime, distanceMeters = :distanceMeters, measurementCount = :count WHERE id = :id")
     suspend fun finishSession(id: Long, endTime: Long, distanceMeters: Double, count: Int)
 
+    /** Corrects both bounds after a bulk import, where the true start/end are only known once
+     * the whole file has been scanned (unlike live mapping, where startTime is accurate from the
+     * moment the session row is created). */
+    @Query("UPDATE mapping_sessions SET startTime = :startTime, endTime = :endTime, distanceMeters = :distanceMeters, measurementCount = :count WHERE id = :id")
+    suspend fun finishImportedSession(id: Long, startTime: Long, endTime: Long, distanceMeters: Double, count: Int)
+
     @Query("UPDATE mapping_sessions SET distanceMeters = :distanceMeters, measurementCount = (SELECT COUNT(*) FROM signal_measurements WHERE sessionId = :id) WHERE id = :id")
     suspend fun updateProgress(id: Long, distanceMeters: Double)
 

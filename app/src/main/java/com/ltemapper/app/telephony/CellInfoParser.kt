@@ -2,6 +2,7 @@ package com.ltemapper.app.telephony
 
 import android.os.Build
 import android.telephony.CellInfo
+import android.telephony.CellInfoCdma
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
@@ -29,6 +30,7 @@ object CellInfoParser {
             is CellInfoLte -> parseLte(cellInfo, subscriptionId, simSlotIndex, operatorName)
             is CellInfoWcdma -> parseWcdma(cellInfo, subscriptionId, simSlotIndex, operatorName)
             is CellInfoGsm -> parseGsm(cellInfo, subscriptionId, simSlotIndex, operatorName)
+            is CellInfoCdma -> parseCdma(cellInfo, subscriptionId, simSlotIndex, operatorName)
             else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && cellInfo is CellInfoNr) {
                 parseNr(cellInfo, subscriptionId, simSlotIndex, operatorName)
             } else {
@@ -129,6 +131,27 @@ object CellInfoParser {
         )
     }
 
+    /** CDMA has no PLMN (MCC/MNC), PCI, EARFCN, or TAC concept, so those fields are left null
+     * rather than approximated from an unrelated identity. */
+    private fun parseCdma(cell: CellInfoCdma, subId: Int?, slot: Int?, operatorName: String?): CellSignalInfo {
+        val identity = cell.cellIdentity
+        val strength = cell.cellSignalStrength
+        val basestationId = identity.basestationId.takeIfValid()
+
+        return CellSignalInfo(
+            networkType = RanType.CDMA,
+            connectionState = if (cell.isRegistered) "REGISTERED" else "NEIGHBOR",
+            isRegistered = cell.isRegistered,
+            rssiDbm = strength.dbm.takeIfValidDbm(),
+            asuLevel = strength.asuLevel,
+            signalLevel0to4 = strength.level,
+            cellId = basestationId?.toLong(),
+            operatorName = operatorName,
+            subscriptionId = subId,
+            simSlotIndex = slot,
+        )
+    }
+
     private fun parseGsm(cell: CellInfoGsm, subId: Int?, slot: Int?, operatorName: String?): CellSignalInfo {
         val identity = cell.cellIdentity
         val strength = cell.cellSignalStrength
@@ -157,6 +180,6 @@ object CellInfoParser {
     /** Android telephony APIs use Int.MAX_VALUE (or similarly large sentinels) for "unavailable". */
     private fun Int.takeIfValid(): Int? = if (this == Int.MAX_VALUE || this < 0) null else this
     private fun Long.takeIfValid(): Long? = if (this == Long.MAX_VALUE || this < 0) null else this
-    private fun Int.takeIfValidDbm(): Int? = if (this == Int.MAX_VALUE || this == Int.MIN_VALUE || this == 0x7FFFFFFF) null else this
-    private fun Int.takeIfValidSnr(): Int? = if (this == Int.MAX_VALUE || this == 0x7FFFFFFF) null else this
+    private fun Int.takeIfValidDbm(): Int? = if (this == Int.MAX_VALUE || this == Int.MIN_VALUE) null else this
+    private fun Int.takeIfValidSnr(): Int? = if (this == Int.MAX_VALUE) null else this
 }

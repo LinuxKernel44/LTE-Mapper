@@ -133,7 +133,8 @@ fun OfflineMapsScreen(
                         estimatedChunks = state.estimatedChunks,
                         estimatedSizeBytes = state.estimatedSizeBytes,
                         progress = state.downloadProgress,
-                        canDownload = !state.sourceBlocksDownloads,
+                        canDownload = state.canStartDownload,
+                        exceedsHardCap = state.exceedsHardCap,
                         waitingForConstraints = state.waitingForConstraints,
                         onZoomRangeChange = viewModel::setZoomRange,
                         onDownload = viewModel::startDownload,
@@ -364,6 +365,7 @@ private fun SelectedPlaceCard(
     estimatedSizeBytes: Long?,
     progress: TileDownloadProgress,
     canDownload: Boolean,
+    exceedsHardCap: Boolean,
     waitingForConstraints: Boolean,
     onZoomRangeChange: (Int, Int) -> Unit,
     onDownload: () -> Unit,
@@ -446,7 +448,13 @@ private fun SelectedPlaceCard(
                         }
                     }
                     Button(onClick = onDownload, enabled = canDownload && estimatedTiles != null) { Text("Download") }
-                    if (!canDownload) {
+                    if (exceedsHardCap) {
+                        Text(
+                            "This area is too large to download in one go (limit: ${"%,d".format(OfflineMapsUiState.MAX_TILES_HARD_CAP)} tiles). Pick a smaller area or a narrower zoom range.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (!canDownload) {
                         Text(
                             "The current map source doesn't allow offline downloads. Choose another one above.",
                             style = MaterialTheme.typography.labelSmall,

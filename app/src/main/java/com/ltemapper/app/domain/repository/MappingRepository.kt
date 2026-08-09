@@ -38,4 +38,8 @@ interface MappingRepository {
     suspend fun getSessionAggregate(sessionId: Long): SessionAggregateRaw
 
     suspend fun importMeasurements(sessionId: Long, measurements: List<Measurement>)
+
+    /** Corrects a session's start/end time and distance after a streamed bulk import; see
+     * [com.ltemapper.app.export.CsvImporter]. */
+    suspend fun finalizeImportedSession(sessionId: Long, startTime: Long, endTime: Long, distanceMeters: Double)
 }
