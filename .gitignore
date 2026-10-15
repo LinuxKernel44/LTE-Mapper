@@ -34,3 +34,12 @@ keystore/*.keystore
 *.keystore
 *.p12
 *.pepk
+
+# secrets / local-only
+*.jks
+*.keystore
+keystore.properties
+local.properties
+android/key
+CLAUDE.md
+.env
